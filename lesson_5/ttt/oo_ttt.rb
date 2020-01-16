@@ -73,8 +73,8 @@ class Board
   end
 
   def find_double_threat_keys(marker)
-    keys = find_lines_with_one(marker).flatten
-    unmarked_keys_at_intersections(keys)
+    lines = find_lines_with_one(marker)
+    unmarked_keys_at_intersections(lines)
   end
 
   def find_lines_with_one(marker)
@@ -84,8 +84,11 @@ class Board
     end
   end
 
-  def unmarked_keys_at_intersections(keys)
-    keys = keys.select { |key| @squares[key].unmarked? }
+  # takes a set of lines (nested array of lines)
+  # returns the square keys of unmarked squares that are at the intersection
+  # of two or more lines in the given set
+  def unmarked_keys_at_intersections(lines)
+    keys = lines.flatten.select { |key| @squares[key].unmarked? }
 
     square_count_hsh = keys.uniq.each_with_object({}) do |key, hsh|
       hsh[key] = keys.count(key)
@@ -131,19 +134,12 @@ class Square
 end
 
 class Player
-  attr_reader :marker, :score, :name
+  attr_accessor :marker, :name
+  attr_reader :score
 
   def initialize(marker)
     @marker = marker
     reset_score
-  end
-
-  def set_name(name)
-    @name = name
-  end
-
-  def set_marker(marker)
-    @marker = marker
   end
 
   def reset_score
@@ -196,45 +192,34 @@ class TTTGame
   end
 
   def pick_names
-    pick_human_name
-    pick_computer_name
+    human.name = pick_name("What is your name?")
+    computer.name = pick_name("What is the computer's name?")
   end
 
-  def pick_human_name
+  def pick_name(prompt)
     answer = nil
     loop do
-      puts "What is your name?"
+      puts prompt
       answer = gets.chomp
       break if answer.downcase.count(('a'..'z').to_a.join) > 0
       puts "Sorry, must have at least one letter."
     end
 
-    human.set_name(answer)
-  end
-
-  def pick_computer_name
-    answer = nil
-    loop do
-      puts "What is the computer's name?"
-      answer = gets.chomp
-      break if answer.downcase.count(('a'..'z').to_a.join) > 0
-      puts "Sorry, must have at least one letter."
-    end
-
-    computer.set_name(answer)
+    answer
   end
 
   def pick_marker
     answer = nil
     loop do
-      puts "Would you like to be X or O?"
+      puts "Would you like to be #{HUMAN_MARKER} or #{COMPUTER_MARKER}?"
       answer = gets.chomp.upcase
-      break if %w(X O).include?(answer)
+      break if [HUMAN_MARKER, COMPUTER_MARKER].include?(answer)
       puts "Sorry, must be x or o."
     end
 
-    human.set_marker(answer)
-    computer.set_marker(human.marker == HUMAN_MARKER ? COMPUTER_MARKER : HUMAN_MARKER)
+    human.marker = answer
+    computer.marker =
+      human.marker == HUMAN_MARKER ? COMPUTER_MARKER : HUMAN_MARKER
   end
 
   def display_final_result
@@ -288,62 +273,48 @@ class TTTGame
   end
 
   def computer_moves
-    win_or_block_win ||
-      take_middle ||
-      make_double_threat ||
-      block_double_threat ||
-      take_corner ||
-      take_anything
-  end
-
-  def make_move_if_valid(square)
-    board[square] = computer.marker if square
-    !!square
-  end
-
-  def win_or_block_win
-    win || block_win
+    square = win
+    square ||= block_win
+    square ||= take_middle
+    square ||= make_double_threat
+    square ||= block_double_threat
+    square ||= take_corner
+    square ||= take_anything
+    board[square] = computer.marker
   end
 
   def win
-    square = board.find_at_risk_keys(computer.marker).sample
-    make_move_if_valid(square)
+    board.find_at_risk_keys(computer.marker).sample
   end
 
   def block_win
-    square = board.find_at_risk_keys(human.marker).sample
-    make_move_if_valid(square)
+    board.find_at_risk_keys(human.marker).sample
   end
 
   def take_middle
-    square = 5 if board.unmarked_keys.include?(5)
-    make_move_if_valid(square)
+    5 if board.unmarked_keys.include?(5)
   end
 
   def make_double_threat
-    square = board.find_double_threat_keys(computer.marker).sample
-    make_move_if_valid(square)
+    board.find_double_threat_keys(computer.marker).sample
   end
 
   def block_double_threat
     double_threats = board.find_double_threat_keys(human.marker)
-    square = if double_threats.size == 1
-               double_threats
-             elsif board[5].marker == computer.marker
-               board.unmarked_keys.select(&:even?)
-             end
-    square = square.sample if square
-    make_move_if_valid(square)
+    if double_threats.size == 1
+      double_threats.sample
+    elsif board[5].marker == computer.marker
+      board.unmarked_keys.select(&:even?).sample
+    end
+    nil
   end
 
   def take_corner
-    square = board.unmarked_keys.select(&:odd?).sample
-    make_move_if_valid(square)
+    board.unmarked_keys.select(&:odd?).sample
   end
 
   def take_anything
-    square = board.unmarked_keys.sample
-    make_move_if_valid(square)
+    board.unmarked_keys.sample
   end
 
   def current_player_moves
